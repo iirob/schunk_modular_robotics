@@ -1530,13 +1530,13 @@ bool PowerCubeCtrl::doHoming()
     return true;
 }
 
-bool PowerCubeCtrl::getPositionAndStaus(int module_id, unsigned long* state, unsigned char* dio, float* position)
+bool PowerCubeCtrl::getPositionAndStaus(int i, unsigned long* state, unsigned char* dio, float* position)
 {
     int ret = 0;
 
     if(m_version[i]>VERSION_ELECTR3_FIRST or (m_version[i]>VERSION_ELECTR2_FIRST and    m_version[i]<VERSION_ELECTR2_LAST))
     {
-        ret = PCube_getStateDioPos(m_DeviceHandle, m_params->GetModuleID(module_id), state, dio, position);
+        ret = PCube_getStateDioPos(m_DeviceHandle, m_params->GetModuleID(i), state, dio, position);
     }
     else
     {
@@ -1544,7 +1544,7 @@ bool PowerCubeCtrl::getPositionAndStaus(int module_id, unsigned long* state, uns
         ret |= PCube_getModuleState(m_DeviceHandle, m_params->GetModuleID(i), state);
         unsigned long puiValue;
         ret |= PCube_getDioData(m_DeviceHandle, m_params->GetModuleID(i), &puiValue);
-        dio = (unsigned char)puiValue;
+        *dio = (unsigned char)puiValue;
     }
 
     return ret;
