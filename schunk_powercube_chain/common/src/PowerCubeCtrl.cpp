@@ -1367,7 +1367,7 @@ bool PowerCubeCtrl::getPositionAndStaus(int i, unsigned long* state, unsigned ch
         ret |= PCube_getModuleState(m_DeviceHandle, m_params->GetModuleID(i), state);
         unsigned long puiValue;
         ret |= PCube_getDioData(m_DeviceHandle, m_params->GetModuleID(i), &puiValue);
-        dio = (unsigned char)puiValue;
+        *dio = (unsigned char)puiValue;
     }
 
     return ret;
