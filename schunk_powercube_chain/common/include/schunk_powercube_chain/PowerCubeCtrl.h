@@ -289,7 +289,7 @@ protected:
 
     std::string m_ErrorMessage;
 
-    bool getPositionAndStaus ( int module_id, unsigned long* state, unsigned char* dio, float* position );
+    bool getPositionAndStaus(int module_id, unsigned long* state, unsigned char* dio, float* position);
 };
 
 #endif
