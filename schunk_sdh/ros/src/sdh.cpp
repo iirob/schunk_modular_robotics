@@ -64,6 +64,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <math.h>
 
 // ROS includes
 #include <ros/ros.h>
@@ -71,6 +72,7 @@
 #include <actionlib/server/simple_action_server.h>
 
 // ROS message includes
+#include <std_msgs/Float64.h>
 #include <std_msgs/Float64MultiArray.h>
 #include <trajectory_msgs/JointTrajectory.h>
 #include <sensor_msgs/JointState.h>
@@ -82,6 +84,10 @@
 // ROS service includes
 #include <std_srvs/Trigger.h>
 #include <cob_srvs/SetString.h>
+
+// ROS visualisation msgs
+#include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
 
 // ROS diagnostic msgs
 #include <diagnostic_msgs/DiagnosticArray.h>
@@ -105,10 +111,13 @@ private:
   ros::Publisher topicPub_JointState_;
   ros::Publisher topicPub_ControllerState_;
   ros::Publisher topicPub_TactileSensor_;
+  ros::Publisher topicPub_TactileSensorVisualisation_;
   ros::Publisher topicPub_Diagnostics_;
 
   // topic subscribers
+  ros::Subscriber subSetPositionsRaw_;
   ros::Subscriber subSetVelocitiesRaw_;
+  ros::Subscriber subSetCloseWithEffort_;
 
   // service servers
   ros::ServiceServer srvServer_Init_;
@@ -123,6 +132,10 @@ private:
   // service clients
   // --
 
+  // Timers
+  ros::Timer sdhUpdateTimer;
+  ros::Timer dsaUpdateTimer;
+
   // other variables
   SDH::cSDH *sdh_;
   SDH::cDSA *dsa_;
@@ -135,6 +148,7 @@ private:
   int dsadevicenum_;
   int baudrate_, id_read_, id_write_;
   double timeout_;
+  double sdhfrequency_, dsafrequency_;
 
   bool isInitialized_;
   bool isDSAInitialized_;
@@ -144,12 +158,17 @@ private:
 
   trajectory_msgs::JointTrajectory traj_;
 
+  schunk_sdh::TactileSensor currentTactileValues_;
+  sensor_msgs::JointState currentJointStateValues_;
+
   std::vector<std::string> joint_names_;
+  std::vector<std::string> sensors_link_names_;
   std::vector<int> axes_;
   std::vector<double> targetAngles_;  // in degrees
   std::vector<double> velocities_;  // in rad/s
   bool hasNewGoal_;
   std::string operationMode_;
+  bool autoInit_;
 
 public:
   /*!
@@ -195,6 +214,7 @@ public:
     topicPub_ControllerState_ = nh_.advertise<control_msgs::JointTrajectoryControllerState>(
         "joint_trajectory_controller/state", 1);
     topicPub_TactileSensor_ = nh_.advertise<schunk_sdh::TactileSensor>("tactile_data", 1);
+    topicPub_TactileSensorVisualisation_ = nh_.advertise<visualization_msgs::MarkerArray>("tactile_data_visualisation", 1);
 
     // pointer to sdh
     sdh_ = new SDH::cSDH(false, false, 0);  // (_use_radians=false, bool _use_fahrenheit=false, int _debug_level=0)
@@ -206,21 +226,30 @@ public:
     srvServer_SetOperationMode_ = nh_.advertiseService("set_operation_mode", &SdhNode::srvCallback_SetOperationMode,
                                                        this);
 
+    subSetPositionsRaw_ = nh_.subscribe("joint_group_position_controller/command", 1,
+                                         &SdhNode::topicCallback_setPositionsRaw, this);
     subSetVelocitiesRaw_ = nh_.subscribe("joint_group_velocity_controller/command", 1,
                                          &SdhNode::topicCallback_setVelocitiesRaw, this);
+    subSetCloseWithEffort_ = nh_.subscribe("joint_group_effort_controller/command", 1,
+                                         &SdhNode::topicCallback_closeWithEffort, this);
 
     // getting hardware parameters from parameter server
     nh_.param("sdhdevicetype", sdhdevicetype_, std::string("PCAN"));
     nh_.param("sdhdevicestring", sdhdevicestring_, std::string("/dev/pcan0"));
     nh_.param("sdhdevicenum", sdhdevicenum_, 0);
+    nh_.param("sdhfrequency", sdhfrequency_, 60.0);
 
     nh_.param("dsadevicestring", dsadevicestring_, std::string(""));
     nh_.param("dsadevicenum", dsadevicenum_, 0);
+    nh_.param("dsafrequency", dsafrequency_, 5.0);
 
     nh_.param("baudrate", baudrate_, 1000000);
     nh_.param("timeout", timeout_, static_cast<double>(0.04));
     nh_.param("id_read", id_read_, 43);
     nh_.param("id_write", id_write_, 42);
+
+    sdhUpdateTimer = nh_.createTimer(ros::Rate(sdhfrequency_), &SdhNode::updateSdh, this, false, false);
+    dsaUpdateTimer = nh_.createTimer(ros::Rate(dsafrequency_), &SdhNode::updateDsa, this, false, false);
 
     // get joint_names from parameter server
     ROS_INFO("getting joint_names from parameter server");
@@ -243,8 +272,30 @@ public:
     }
     std::cout << "joint_names = " << joint_names_param << std::endl;
 
+    ROS_INFO("DOF = %d", DOF_);
+
+    ROS_INFO("getting sensors_link_names from parameter server");
+    XmlRpc::XmlRpcValue sensors_link_names_param;
+    if (nh_.hasParam("sensors_link_names"))
+    {
+      nh_.getParam("sensors_link_names", sensors_link_names_param);
+    }
+    else
+    {
+      ROS_ERROR("Parameter sensors_link_names not set, shutting down node...");
+      nh_.shutdown();
+      return false;
+    }
+    sensors_link_names_.resize(sensors_link_names_param.size());
+    for (int i = 0; i < sensors_link_names_param.size(); i++)
+    {
+      sensors_link_names_[i] = (std::string)sensors_link_names_param[i];
+    }
+    std::cout << "sensors_link_names = " << sensors_link_names_param << std::endl;
+
     // define axes to send to sdh
     axes_.resize(DOF_);
+    targetAngles_.resize(DOF_);
     velocities_.resize(DOF_);
     for (int i = 0; i < DOF_; i++)
     {
@@ -255,6 +306,26 @@ public:
     state_.resize(axes_.size());
 
     nh_.param("OperationMode", operationMode_, std::string("position"));
+
+    nh_.param("autoinit", autoInit_, false);
+
+    if (autoInit_)
+    {
+      std_srvs::TriggerRequest req;
+      std_srvs::TriggerResponse res;
+      if (srvCallback_Init(req, res))
+      {
+        if (!res.success)
+        {
+          return false;
+        }
+      }
+      else
+      {
+        return false;
+      }
+    }
+
     return true;
   }
   /*!
@@ -276,6 +347,10 @@ public:
       else if (mode == "velocity")
       {
         sdh_->SetController(SDH::cSDH::eCT_VELOCITY);
+      }
+      else if (mode == "effort")
+      {
+        sdh_->SetController(SDH::cSDH::eCT_POSE);
       }
       else
       {
@@ -332,7 +407,6 @@ public:
       dict[goal->trajectory.joint_names[idx]] = idx;
     }
 
-    targetAngles_.resize(DOF_);
     targetAngles_[0] = goal->trajectory.points[0].positions[dict["sdh_knuckle_joint"]] * 180.0 / pi_;  // sdh_knuckle_joint
     targetAngles_[1] = goal->trajectory.points[0].positions[dict["sdh_finger_22_joint"]] * 180.0 / pi_;  // sdh_finger22_joint
     targetAngles_[2] = goal->trajectory.points[0].positions[dict["sdh_finger_23_joint"]] * 180.0 / pi_;  // sdh_finger23_joint
@@ -388,6 +462,39 @@ public:
     as_.setSucceeded();
   }
 
+  void topicCallback_setPositionsRaw(const std_msgs::Float64MultiArrayPtr& positions)
+  {
+    if (!isInitialized_)
+    {
+      ROS_ERROR("%s: Rejected, sdh not initialized", action_name_.c_str());
+      return;
+    }
+    if (positions->data.size() != targetAngles_.size())
+    {
+      ROS_ERROR("Positions array dimension mismatch");
+      return;
+    }
+    if (operationMode_ != "position")
+    {
+      ROS_ERROR("%s: Rejected, sdh not in position mode", action_name_.c_str());
+      return;
+    }
+
+    // TODO: write proper lock!
+    while (hasNewGoal_ == true)
+      usleep(10000);
+
+    targetAngles_[0] = positions->data[0] * 180.0 / pi_;  // sdh_knuckle_joint
+    targetAngles_[1] = positions->data[5] * 180.0 / pi_;  // sdh_finger22_joint
+    targetAngles_[2] = positions->data[6] * 180.0 / pi_;  // sdh_finger23_joint
+    targetAngles_[3] = positions->data[1] * 180.0 / pi_;  // sdh_thumb2_joint
+    targetAngles_[4] = positions->data[2] * 180.0 / pi_;  // sdh_thumb3_joint
+    targetAngles_[5] = positions->data[3] * 180.0 / pi_;  // sdh_finger12_joint
+    targetAngles_[6] = positions->data[4] * 180.0 / pi_;  // sdh_finger13_joint
+
+    hasNewGoal_ = true;
+  }
+
   void topicCallback_setVelocitiesRaw(const std_msgs::Float64MultiArrayPtr& velocities)
   {
     if (!isInitialized_)
@@ -419,6 +526,63 @@ public:
     velocities_[6] = velocities->data[4] * 180.0 / pi_;  // sdh_finger13_joint
 
     hasNewGoal_ = true;
+  }
+
+  void topicCallback_closeWithEffort(const std_msgs::Float64 effort)
+  {
+    if (!isInitialized_)
+    {
+      ROS_ERROR("%s: Rejected, sdh not initialized", action_name_.c_str());
+      return;
+    }
+
+    if (operationMode_ != "effort" and operationMode_ != "position")
+    {
+      ROS_ERROR("%s: Rejected, sdh not in effort or position mode", action_name_.c_str());
+      return;
+    }
+
+    // TODO: write proper lock!
+    while (hasNewGoal_ == true)
+      usleep(10000);
+
+    targetAngles_[0] = 45;  // sdh_knuckle_joint
+    targetAngles_[1] = 5;  // sdh_finger22_joint
+    targetAngles_[2] = 0;  // sdh_finger23_joint
+    targetAngles_[3] = 5;  // sdh_thumb2_joint
+    targetAngles_[4] = 0;  // sdh_thumb3_joint
+    targetAngles_[5] = 5;  // sdh_finger12_joint
+    targetAngles_[6] = 0;  // sdh_finger13_joint
+
+    hasNewGoal_ = true;
+
+    usleep(500000);  // needed sleep until sdh starts to change status from idle to moving
+
+    bool finished = false;
+    while (!finished)
+    {
+      for (int i = 0; i < currentTactileValues_.tactile_matrix.size(); i++)
+      {
+        for (int j = 0; j < currentTactileValues_.tactile_matrix[i].tactile_array.size(); j++)
+        {
+          if (currentTactileValues_.tactile_matrix[i].tactile_array[j] >= effort.data)
+          {
+            sdh_->Stop(); //Here we get errors
+//             targetAngles_[0] = 45;  // sdh_knuckle_joint
+//             targetAngles_[1] = currentJointStateValues_.position[5];  // sdh_finger22_joint
+//             targetAngles_[2] = 0;  // sdh_finger23_joint
+//             targetAngles_[3] = currentJointStateValues_.position[1];  // sdh_thumb2_joint
+//             targetAngles_[4] = 0;  // sdh_thumb3_joint
+//             targetAngles_[5] = currentJointStateValues_.position[3];  // sdh_finger12_joint
+//             targetAngles_[6] = 0;  // sdh_finger13_joint
+//             hasNeđwGoal_ = true;
+            finished = true;
+          }
+        }
+      }
+
+      usleep(1000);
+    }
   }
 
   /*!
@@ -512,6 +676,9 @@ public:
         res.message = "Could not set operation mode to '" + operationMode_ + "'";
         return true;
       }
+
+      sdhUpdateTimer.start();
+      dsaUpdateTimer.start();
     }
     else
     {
@@ -575,32 +742,15 @@ public:
    */
   bool srvCallback_SetOperationMode(cob_srvs::SetString::Request &req, cob_srvs::SetString::Response &res)
   {
-    hasNewGoal_ = false;
-    sdh_->Stop();
     ROS_INFO("Set operation mode to [%s]", req.data.c_str());
-    operationMode_ = req.data;
+
     res.success = true;
-    if (operationMode_ == "position")
-    {
-      sdh_->SetController(SDH::cSDH::eCT_POSE);
-    }
-    else if (operationMode_ == "velocity")
-    {
-      try
+    if (!switchOperationMode(req.data))
       {
-        sdh_->SetController(SDH::cSDH::eCT_VELOCITY);
-        sdh_->SetAxisEnable(sdh_->All, 1.0);
+        res.success = false;
+        res.message = "Could not set operation mode to '" + req.data + "'";
       }
-      catch (SDH::cSDHLibraryException* e)
-      {
-        ROS_ERROR("An exception was caught: %s", e->what());
-        delete e;
-      }
-    }
-    else
-    {
-      ROS_ERROR_STREAM("Operation mode '" << req.data << "'  not supported");
-    }
+
     return true;
   }
 
@@ -609,7 +759,7 @@ public:
    *
    * Sends target to hardware and reads out current configuration.
    */
-  void updateSdh()
+  void updateSdh(const ros::TimerEvent &event)
   {
     ROS_DEBUG("updateJointState");
     if (isInitialized_ == true)
@@ -627,10 +777,9 @@ public:
           delete e;
         }
 
-        if (operationMode_ == "position")
+        if (operationMode_ == "position" or operationMode_ == "effort")
         {
           ROS_DEBUG("moving sdh in position mode");
-
           try
           {
             sdh_->SetAxisTargetAngle(axes_, targetAngles_);
@@ -656,12 +805,20 @@ public:
             delete e;
           }
         }
-        else if (operationMode_ == "effort")
-        {
-          ROS_DEBUG("moving sdh in effort mode");
-          // sdh_->MoveVel(goal->trajectory.points[0].velocities);
-          ROS_WARN("Moving in effort mode currently disabled");
-        }
+//         else if (operationMode_ == "effort")
+//         {
+//           ROS_DEBUG("moving sdh in position mode");
+//           try
+//           {
+//             sdh_->SetAxisTargetAngle(axes_, targetAngles_);
+//             sdh_->MoveHand(false);
+//           }
+//           catch (SDH::cSDHLibraryException* e)
+//           {
+//             ROS_ERROR("An exception was caught: %s", e->what());
+//             delete e;
+//           }
+//         }
         else
         {
           ROS_ERROR("sdh neither in position nor in velocity nor in effort mode. OperationMode = [%s]",
@@ -725,6 +882,7 @@ public:
       msg.velocity[6] = actualVelocities[2] * pi_ / 180.0;  // sdh_finger_23_joint
       // publish message
       topicPub_JointState_.publish(msg);
+      currentJointStateValues_ = msg;
 
       // because the robot_state_publisher doen't know about the mimic joint, we have to publish the coupled joint separately
       sensor_msgs::JointState mimicjointmsg;
@@ -820,9 +978,18 @@ public:
    *
    * Reads out current values.
    */
-  void updateDsa()
+  void updateDsa(const ros::TimerEvent &event)
   {
     static const int dsa_reorder[6] = {2, 3, 4, 5, 0, 1};  // t1,t2,f11,f12,f21,f22
+    static const double sensor_width = 0.022;
+    static const double sensor_length = 0.05;
+    static const double tip_sensor_curvature = 0.060;
+    static const double tip_less_thickness = 0.015818-0.005151;
+    static const double tip_linear_lenght = 0.013775;
+
+    double y_pos, z_pos;
+
+
     ROS_DEBUG("updateTactileData");
 
     if (isDSAInitialized_)
@@ -843,8 +1010,12 @@ public:
       }
 
       schunk_sdh::TactileSensor msg;
+
+      visualization_msgs::MarkerArray vis_msg;
+      vis_msg.markers.resize(dsa_->GetSensorInfo().nb_matrices);
+
       msg.header.stamp = ros::Time::now();
-      int m, x, y;
+      int m, x, y, index;
       msg.tactile_matrix.resize(dsa_->GetSensorInfo().nb_matrices);
       for (int i = 0; i < dsa_->GetSensorInfo().nb_matrices; i++)
       {
@@ -854,14 +1025,74 @@ public:
         tm.cells_x = dsa_->GetMatrixInfo(m).cells_x;
         tm.cells_y = dsa_->GetMatrixInfo(m).cells_y;
         tm.tactile_array.resize(tm.cells_x * tm.cells_y);
+
+        double cell_distance_x = sensor_width/tm.cells_x;
+        double cell_distance_y = sensor_length/tm.cells_y;
+
+        vis_msg.markers[i].header.stamp = msg.header.stamp;
+        vis_msg.markers[i].header.frame_id = sensors_link_names_[i];
+        vis_msg.markers[i].ns = sensors_link_names_[i];
+        vis_msg.markers[i].type = 8; //visualization_msgs::Marker.POINT_LIST;
+        vis_msg.markers[i].frame_locked = true;
+        vis_msg.markers[i].scale.x = cell_distance_x;
+        vis_msg.markers[i].scale.y = cell_distance_y;
+        vis_msg.markers[i].points.resize(tm.cells_x * tm.cells_y);
+        vis_msg.markers[i].colors.resize(tm.cells_x * tm.cells_y);
+
         for (y = 0; y < tm.cells_y; y++)
         {
+          if (tm.cells_y == 13)
+          {
+
+            int number_of_linear = round(tip_linear_lenght / cell_distance_y);
+            double alpha = 2 * asin(cell_distance_y/2 / tip_sensor_curvature);
+            int number_of_curvature = tm.cells_y-number_of_linear;
+//           y_pos_0 = tip_sensor_curvature*sin((tm.cells_y) * alpha);
+
+            if (y <= number_of_curvature) {
+              y_pos = tip_sensor_curvature*sin((y-number_of_curvature) * alpha) + (sensor_length-tip_linear_lenght);
+              z_pos = tip_sensor_curvature*cos((y-number_of_curvature) * alpha) - (tip_sensor_curvature - tip_less_thickness) + 0.001; //HACK: Remove 0.001 when description is updated.
+            }
+            else
+            {
+              y_pos = (sensor_length-tip_linear_lenght) + cell_distance_y*(y - (number_of_curvature));
+              z_pos = tip_less_thickness;
+            }
+            z_pos *= -1;
+          }
+          else
+          {
+            y_pos = y * cell_distance_y;
+            z_pos = 0.0;
+          }
+
           for (x = 0; x < tm.cells_x; x++)
-            tm.tactile_array[tm.cells_x * y + x] = dsa_->GetTexel(m, x, y);
+          {
+            index = tm.cells_x * y + x;
+            tm.tactile_array[index] = dsa_->GetTexel(m, x, y);
+            vis_msg.markers[i].points[index].x = x * cell_distance_x + cell_distance_x/2;
+            vis_msg.markers[i].points[index].y = y_pos + cell_distance_y/2;
+            vis_msg.markers[i].points[index].z = z_pos;
+
+            vis_msg.markers[i].colors[index].r = tm.tactile_array[index]/4096.0;
+            vis_msg.markers[i].colors[index].a = 1;
+
+            // Dont show first 5 markers on the sides if the sensor is on finger tip
+            if (tm.cells_y == 13)
+            {
+              if (y < 5 and (x == 0 or x == tm.cells_x-1))
+              {
+                vis_msg.markers[i].colors[index].a = 0;
+              }
+            }
+
+          }
         }
       }
       // publish matrix
       topicPub_TactileSensor_.publish(msg);
+      currentTactileValues_ = msg;
+      topicPub_TactileSensorVisualisation_.publish(vis_msg);
     }
   }
 };
@@ -884,31 +1115,9 @@ int main(int argc, char** argv)
 
   ROS_INFO("...sdh node running...");
 
-  double frequency;
-  if (sdh_node.nh_.hasParam("frequency"))
-  {
-    sdh_node.nh_.getParam("frequency", frequency);
-  }
-  else
-  {
-    frequency = 5;  // Hz
-    ROS_WARN("Parameter frequency not available, setting to default value: %f Hz", frequency);
-  }
-
-  // sleep(1);
-  ros::Rate loop_rate(frequency);  // Hz
-  while (sdh_node.nh_.ok())
-  {
-    // publish JointState
-    sdh_node.updateSdh();
-
-    // publish TactileData
-    sdh_node.updateDsa();
-
-    // sleep and waiting for messages, callbacks
-    ros::spinOnce();
-    loop_rate.sleep();
-  }
+  ros::AsyncSpinner spinner(4); // Use 4 threads
+  spinner.start();
+  ros::waitForShutdown();
 
   return 0;
 }

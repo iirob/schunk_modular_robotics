@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(schunk_sdh)
 
-find_package(catkin REQUIRED COMPONENTS actionlib cob_srvs control_msgs diagnostic_msgs libntcan libpcan message_generation roscpp roslint sensor_msgs std_msgs std_srvs trajectory_msgs urdf)
+find_package(catkin REQUIRED COMPONENTS actionlib cob_srvs control_msgs diagnostic_msgs libntcan libpcan message_generation roscpp roslint sensor_msgs std_msgs std_srvs trajectory_msgs urdf visualization_msgs)
 
 find_package(Boost REQUIRED)
 
