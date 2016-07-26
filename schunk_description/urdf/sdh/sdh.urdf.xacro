@@ -20,7 +20,7 @@
         <geometry>
           <mesh filename="package://schunk_description/meshes/sdh/palm.stl" />
         </geometry>
-        <material name="Schunk/LightGrey" />
+        <material name="Schunk/DarkGrey" />
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
@@ -79,12 +79,12 @@
     <!-- finger1 -->
     <!-- joint between sdh_palm_link and sdh_finger_11_link -->
     <joint name="${name}_knuckle_joint" type="revolute">
-      <origin xyz="0.01905 0.033 0.0745" rpy="0 0 3.14159265" />
+      <origin xyz="0.01905 0.033 0.0745" rpy="0 0 ${M_PI}" />
       <parent link="${name}_palm_link"/>
       <child link="${name}_finger_11_link"/>
       <axis xyz="0 0 1" />
       <dynamics damping="1" />
-      <limit effort="100" lower="0" upper="1.570796327" velocity="5"/>
+      <limit effort="100" lower="0" upper="${M_PI/2}" velocity="5"/>
     </joint>
 
     <link name="${name}_finger_11_link">
@@ -94,7 +94,7 @@
         <geometry>
           <mesh filename="package://schunk_description/meshes/sdh/knuckle.stl" />
         </geometry>
-        <material name="Schunk/LightGrey" />
+        <material name="Schunk/DarkGrey" />
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
@@ -111,7 +111,7 @@
       <child link="${name}_finger_12_link"/>
       <axis xyz="0 1 0" />
       <dynamics damping="1" />
-      <limit effort="100" lower="-1.570796327" upper="1.570796327" velocity="5"/>
+      <limit effort="100" lower="${-M_PI/2}" upper="${M_PI/2}" velocity="5"/>
     </joint>
 
     <link name="${name}_finger_12_link">
@@ -121,7 +121,7 @@
         <geometry>
           <mesh filename="package://schunk_description/meshes/sdh/finger.stl" />
         </geometry>
-      <material name="Schunk/LightGrey" />
+      <material name="Schunk/DarkGrey" />
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
@@ -129,6 +129,29 @@
           <mesh filename="package://schunk_description/meshes/sdh/finger.stl"/>
         </geometry>
       </collision>
+    </link>
+
+    <joint name="${name}_finger_1_sensor_joint" type="fixed">
+      <origin xyz="0.01529 -0.011 ${0.01875+0.05}" rpy="-${M_PI/2} 0 ${M_PI/2}" />
+      <parent link="${name}_finger_12_link"/>
+      <child link="${name}_finger_1_sensor_link"/>
+    </joint>
+
+    <link name="${name}_finger_1_sensor_link">
+      <xacro:default_inertial/>
+      <!--<visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl" />
+        </geometry>
+      <material name="Schunk/DarkGrey" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl"/>
+        </geometry>
+      </collision>-->
     </link>
 
     <!-- joint between sdh_finger_12_link and sdh_finger_13_link -->
@@ -139,7 +162,7 @@
       <child link="${name}_finger_13_link"/>
       <axis xyz="0 1 0" />
       <dynamics damping="1" />
-      <limit effort="100" lower="-1.570796327" upper="1.570796327" velocity="5"/>
+      <limit effort="100" lower="${-M_PI/2}" upper="${M_PI/2}" velocity="5"/>
     </joint>
 
     <link name="${name}_finger_13_link">
@@ -149,7 +172,7 @@
         <geometry>
           <mesh filename="package://schunk_description/meshes/sdh/finger_tip.stl" />
         </geometry>
-        <material name="Schunk/LightGrey" />
+        <material name="Schunk/DarkGrey" />
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
@@ -159,16 +182,39 @@
       </collision>
     </link>
 
+    <joint name="${name}_finger_tip_1_sensor_joint" type="fixed">
+      <origin xyz="0.005151 -0.011 ${0.01943+0.05}" rpy="-${M_PI/2} 0 ${M_PI/2}" />
+      <parent link="${name}_finger_13_link"/>
+      <child link="${name}_finger_tip_1_sensor_link"/>
+    </joint>
+
+    <link name="${name}_finger_tip_1_sensor_link">
+      <xacro:default_inertial/>
+      <!--<visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl" />
+        </geometry>
+      <material name="Schunk/DarkGrey" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl"/>
+        </geometry>
+      </collision>-->
+    </link>
+
     <!-- finger2 -->
     <!-- joint between sdh_palm_link and sdh_finger_21_link -->
     <joint name="${name}_finger_21_joint" type="revolute">
       <mimic joint="${name}_knuckle_joint" multiplier="1" offset="0"/>
-      <origin xyz="0.01905 -0.033 0.0745" rpy="0 0 3.14159265" />
+      <origin xyz="0.01905 -0.033 0.0745" rpy="0 0 ${M_PI}" />
       <parent link="${name}_palm_link"/>
       <child link="${name}_finger_21_link"/>
       <axis xyz="0 0 -1" />
       <dynamics damping="1" />
-      <limit effort="100" lower="0" upper="1.570796327" velocity="5"/>
+      <limit effort="100" lower="0" upper="${M_PI/2}" velocity="5"/>
     </joint>
 
     <link name="${name}_finger_21_link">
@@ -178,7 +224,7 @@
         <geometry>
           <mesh filename="package://schunk_description/meshes/sdh/knuckle.stl" />
         </geometry>
-        <material name="Schunk/LightGrey" />
+        <material name="Schunk/DarkGrey" />
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
@@ -195,7 +241,7 @@
       <child link="${name}_finger_22_link"/>
       <axis xyz="0 1 0" />
       <dynamics damping="1" />
-      <limit effort="100" lower="-1.570796327" upper="1.570796327" velocity="5"/>
+      <limit effort="100" lower="${-M_PI/2}" upper="${M_PI/2}" velocity="5"/>
     </joint>
 
     <link name="${name}_finger_22_link">
@@ -205,7 +251,7 @@
         <geometry>
           <mesh filename="package://schunk_description/meshes/sdh/finger.stl" />
         </geometry>
-        <material name="Schunk/LightGrey" />
+        <material name="Schunk/DarkGrey" />
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
@@ -215,6 +261,29 @@
       </collision>
     </link>
 
+    <joint name="${name}_finger_2_sensor_joint" type="fixed">
+      <origin xyz="0.01529 -0.011 ${0.01875+0.05}" rpy="-${M_PI/2} 0 ${M_PI/2}" />
+      <parent link="${name}_finger_22_link"/>
+      <child link="${name}_finger_2_sensor_link"/>
+    </joint>
+
+    <link name="${name}_finger_2_sensor_link">
+      <xacro:default_inertial/>
+      <!--<visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl" />
+        </geometry>
+      <material name="Schunk/DarkGrey" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl"/>
+        </geometry>
+      </collision>-->
+    </link>
+
     <!-- joint between sdh_finger_22_link and sdh_finger_23_link -->
     <joint name="${name}_finger_23_joint" type="revolute">
       <origin xyz="0 0 0.0865" rpy="0 0 0" />
@@ -222,7 +291,7 @@
       <child link="${name}_finger_23_link"/>
       <axis xyz="0 1 0" />
       <dynamics damping="1" />
-      <limit effort="100" lower="-1.570796327" upper="1.570796327" velocity="5"/>
+      <limit effort="100" lower="${-M_PI/2}" upper="${M_PI/2}" velocity="5"/>
     </joint>
 
     <link name="${name}_finger_23_link">
@@ -232,7 +301,7 @@
         <geometry>
           <mesh filename="package://schunk_description/meshes/sdh/finger_tip.stl" />
         </geometry>
-        <material name="Schunk/LightGrey" />
+        <material name="Schunk/DarkGrey" />
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
@@ -240,6 +309,29 @@
           <mesh filename="package://schunk_description/meshes/sdh/finger_tip.stl"/>
         </geometry>
       </collision>
+    </link>
+
+    <joint name="${name}_finger_tip_2_sensor_joint" type="fixed">
+      <origin xyz="0.005151 -0.011 ${0.01943+0.05}" rpy="-${M_PI/2} 0 ${M_PI/2}" />
+      <parent link="${name}_finger_23_link"/>
+      <child link="${name}_finger_tip_2_sensor_link"/>
+    </joint>
+
+    <link name="${name}_finger_tip_2_sensor_link">
+      <xacro:default_inertial/>
+      <!--<visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl" />
+        </geometry>
+      <material name="Schunk/DarkGrey" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl"/>
+        </geometry>
+      </collision>-->
     </link>
 
     <!-- thumb -->
@@ -257,7 +349,7 @@
         <geometry>
           <mesh filename="package://schunk_description/meshes/sdh/knuckle.stl" />
         </geometry>
-        <material name="Schunk/LightGrey" />
+        <material name="Schunk/DarkGrey" />
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
@@ -274,7 +366,7 @@
     <child link="${name}_thumb_2_link"/>
     <axis xyz="0 1 0" />
     <dynamics damping="1" />
-    <limit effort="100" lower="-1.570796327" upper="1.570796327" velocity="5"/>
+    <limit effort="100" lower="${-M_PI/2}" upper="${M_PI/2}" velocity="5"/>
     </joint>
 
     <link name="${name}_thumb_2_link">
@@ -284,7 +376,7 @@
         <geometry>
           <mesh filename="package://schunk_description/meshes/sdh/finger.stl" />
         </geometry>
-        <material name="Schunk/LightGrey" />
+        <material name="Schunk/DarkGrey" />
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
@@ -294,6 +386,29 @@
       </collision>
     </link>
 
+    <joint name="${name}_thumb_sensor_joint" type="fixed">
+      <origin xyz="0.01529 -0.011 ${0.01875+0.05}" rpy="-${M_PI/2} 0 ${M_PI/2}" />
+      <parent link="${name}_thumb_2_link"/>
+      <child link="${name}_thumb_sensor_link"/>
+    </joint>
+
+    <link name="${name}_thumb_sensor_link">
+      <xacro:default_inertial/>
+      <!--<visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl" />
+        </geometry>
+      <material name="Schunk/DarkGrey" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl"/>
+        </geometry>
+      </collision>-->
+    </link>
+
     <!-- joint between sdh_thumb_2_link and sdh_thumb_3_link -->
     <joint name="${name}_thumb_3_joint" type="revolute">
       <origin xyz="0 0 0.0865" rpy="0 0 0" />
@@ -301,7 +416,7 @@
       <child link="${name}_thumb_3_link"/>
       <axis xyz="0 1 0" />
       <dynamics damping="1" />
-      <limit effort="100" lower="-1.570796327" upper="1.570796327" velocity="5"/>
+      <limit effort="100" lower="${-M_PI/2}" upper="${M_PI/2}" velocity="5"/>
     </joint>
 
     <link name="${name}_thumb_3_link">
@@ -311,7 +426,7 @@
         <geometry>
           <mesh filename="package://schunk_description/meshes/sdh/finger_tip.stl" />
         </geometry>
-        <material name="Schunk/LightGrey" />
+        <material name="Schunk/DarkGrey" />
       </visual>
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0" />
@@ -319,6 +434,29 @@
           <mesh filename="package://schunk_description/meshes/sdh/finger_tip.stl"/>
         </geometry>
       </collision>
+    </link>
+
+    <joint name="${name}_thumb_tip_sensor_joint" type="fixed">
+      <origin xyz="0.005151 -0.011 ${0.01943+0.05}" rpy="-${M_PI/2} 0 ${M_PI/2}" />
+      <parent link="${name}_thumb_3_link"/>
+      <child link="${name}_thumb_tip_sensor_link"/>
+    </joint>
+
+    <link name="${name}_thumb_tip_sensor_link">
+      <xacro:default_inertial/>
+      <!--<visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl" />
+        </geometry>
+      <material name="Schunk/DarkGrey" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://schunk_description/meshes/sdh/finger.stl"/>
+        </geometry>
+      </collision>-->
     </link>
 
     <!-- extensions -->
